@@ -1,4 +1,4 @@
-FROM --platform=amd64 nvidia/cuda:11.8.0-devel-ubuntu22.04
+FROM --platform=amd64 nvidia/cuda:12.1.1-cudnn8-devel-ubuntu22.04
 WORKDIR /styletts2
 RUN apt-get update && apt-get install -y espeak-ng python3 python3-pip git curl unzip
 RUN curl -LO https://huggingface.co/yl4579/StyleTTS2-LibriTTS/resolve/main/reference_audio.zip \
