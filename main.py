@@ -206,7 +206,14 @@ app = Flask(__name__)
 
 @app.route('/generate', methods=['POST'])
 def generate():
-    noise = torch.randn(1, 1, 256).to(device)
+    username = os.environ.get('TTS2_API_BASIC_AUTH_USER')
+    password = os.environ.get('TTS2_API_BASIC_AUTH_PASSWORD')
+
+    if username is not None or password is not None:
+        auth = request.authorization
+        if not auth or auth.username != username or auth.password != password:
+            return "Unauthorized", 401
+
     text = request.json['text']
     voice_id = request.json['voice_id']
     print(voice_id)
