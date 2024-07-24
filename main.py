@@ -1,9 +1,11 @@
+from functools import wraps
+
 from werkzeug.utils import secure_filename
 
 from Modules.diffusion.sampler import DiffusionSampler, ADPM2Sampler, KarrasSchedule
 from Utils.PLBERT.util import load_plbert
 from io import BytesIO
-from flask import Flask, make_response, request
+from flask import Flask, make_response, request, jsonify
 import wave
 from phonemizer.backend.espeak.wrapper import EspeakWrapper
 import phonemizer
@@ -205,43 +207,43 @@ app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config.from_prefixed_env('TTS2_API')
 
+
+def check_credentials(username, password):
+    return username == app.config['BASIC_AUTH_USERNAME'] and password == app.config['BASIC_AUTH_PASSWORD']
+
+
+def basic_auth(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        auth = request.authorization
+        if not auth or not check_credentials(auth.username, auth.password):
+            return jsonify({'message': 'Unauthorized'}), 401
+        return f(*args, **kwargs)
+    return decorated_function
+
+
 def allowed_file(filename):
     return '.' in filename and \
         filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
 @app.route('/upload_voice', methods=['POST'])
+@basic_auth
 def upload_voice():
-    print(app.config)
-    username = app.config["BASIC_AUTH_USERNAME"]
-    password = app.config["BASIC_AUTH_PASSWORD"]
-
-    if username is not None or password is not None:
-        auth = request.authorization
-        if not auth or auth.username != username or auth.password != password:
-            return "Unauthorized", 401
-
     if 'file' not in request.files:
-        return "Bad Request", 400
+        return jsonify({'message': 'Bad Request'}), 400
     file = request.files['file']
     if file.filename == '':
-        return "Bad Request", 400
+        return jsonify({'message': 'Bad Request'}), 400
     if file and allowed_file(file.filename):
         filename = secure_filename(file.filename)
         file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-    return "OK", 200
+    return jsonify({'message': 'OK'}), 200
 
 
 @app.route('/generate', methods=['POST'])
+@basic_auth
 def generate():
-    username = app.config["BASIC_AUTH_USERNAME"]
-    password = app.config["BASIC_AUTH_PASSWORD"]
-
-    if username is not None or password is not None:
-        auth = request.authorization
-        if not auth or auth.username != username or auth.password != password:
-            return "Unauthorized", 401
-
     text = request.json['text']
     voice_name = request.json['voice_name']
     print(voice_name)
