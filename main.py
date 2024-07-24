@@ -1,3 +1,5 @@
+from werkzeug.utils import secure_filename
+
 from Modules.diffusion.sampler import DiffusionSampler, ADPM2Sampler, KarrasSchedule
 from Utils.PLBERT.util import load_plbert
 from io import BytesIO
@@ -32,8 +34,8 @@ textclenaer = TextCleaner()
 nltk.download("punkt")
 
 # TODO: Workaround for macOS, remove later
-# _ESPEAK_LIBRARY = '/opt/homebrew/lib/libespeak-ng.dylib'
-# EspeakWrapper.set_library(_ESPEAK_LIBRARY)
+_ESPEAK_LIBRARY = '/opt/homebrew/lib/libespeak-ng.dylib'
+EspeakWrapper.set_library(_ESPEAK_LIBRARY)
 
 
 to_mel = torchaudio.transforms.MelSpectrogram(
@@ -196,18 +198,44 @@ def inference(text, ref_s, alpha=0.3, beta=0.7, diffusion_steps=5, embedding_sca
     return out.squeeze().cpu().numpy()[..., :-50]
 
 
-reference_dicts = {'1': "reference_audio/696_92939_000016_000006.wav",
-                   '2': "reference_audio/1789_142896_000022_000005.wav", '3': "reference_audio/anger.wav",
-                   '4': "reference_audio/sleepy.wav", '5': "reference_audio/amused.wav",
-                   '6': "reference_audio/disgusted.wav"}
+UPLOAD_FOLDER = '/workspace/reference_voices'
+ALLOWED_EXTENSIONS = {'wav'}
 
 app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config.from_prefixed_env('TTS2_API')
+
+def allowed_file(filename):
+    return '.' in filename and \
+        filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+@app.route('/upload_voice', methods=['POST'])
+def upload_voice():
+    print(app.config)
+    username = app.config["BASIC_AUTH_USERNAME"]
+    password = app.config["BASIC_AUTH_PASSWORD"]
+
+    if username is not None or password is not None:
+        auth = request.authorization
+        if not auth or auth.username != username or auth.password != password:
+            return "Unauthorized", 401
+
+    if 'file' not in request.files:
+        return "Bad Request", 400
+    file = request.files['file']
+    if file.filename == '':
+        return "Bad Request", 400
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+    return "OK", 200
 
 
 @app.route('/generate', methods=['POST'])
 def generate():
-    username = os.environ.get('TTS2_API_BASIC_AUTH_USER')
-    password = os.environ.get('TTS2_API_BASIC_AUTH_PASSWORD')
+    username = app.config["BASIC_AUTH_USERNAME"]
+    password = app.config["BASIC_AUTH_PASSWORD"]
 
     if username is not None or password is not None:
         auth = request.authorization
@@ -215,9 +243,9 @@ def generate():
             return "Unauthorized", 401
 
     text = request.json['text']
-    voice_id = request.json['voice_id']
-    print(voice_id)
-    ref_s = compute_style(reference_dicts[voice_id])
+    voice_name = request.json['voice_name']
+    print(voice_name)
+    ref_s = compute_style(os.path.join(app.config['UPLOAD_FOLDER'], voice_name))
     alpha = request.json.get('alpha', 0.3)
     print('alpha', alpha)
     beta = request.json.get('beta', 0.7)
